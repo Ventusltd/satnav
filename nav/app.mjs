@@ -1,7 +1,6 @@
 import {parseDestination} from './place.mjs';
-import {guide} from './compass.mjs';
+import {guide,fixQuality} from './compass.mjs';
 const el=id=>document.getElementById(id);
-const MAX_AGE_MS=10000, MAX_ACCURACY_M=30;
 let target=null,fix=null,watch=null,wake=null,generation=0,wakePending=false;
 function setTarget(t){
   target=t;el('destination').textContent=t?(t.name||'Selected coordinates'):'No destination selected';
@@ -9,9 +8,8 @@ function setTarget(t){
   render();
 }
 function render(){
-  const now=Date.now(),age=fix?now-fix.timestampMs:Infinity;
-  const fresh=!!fix&&Number.isFinite(age)&&age>=0&&age<=MAX_AGE_MS;
-  const usable=fresh&&fix.accuracyM<=MAX_ACCURACY_M;
+  const now=Date.now(),quality=fixQuality(fix,now);
+  const usable=quality==='usable',fresh=usable||quality==='poor';
   const g=usable?guide(fix,target,now):null;
   el('distance').textContent=g?(g.distanceM>=1000?(g.distanceM/1000).toFixed(2)+' km':Math.round(g.distanceM)+' m'):'—';
   el('bearing').textContent=g?.bearingDeg!=null?Math.round(g.bearingDeg)%360+'°':'—';
