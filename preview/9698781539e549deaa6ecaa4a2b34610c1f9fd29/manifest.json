@@ -1,0 +1,43 @@
+{
+  "schema": "satnav.p1.preview.v1",
+  "source_commit": "9698781539e549deaa6ecaa4a2b34610c1f9fd29",
+  "scope": "test-only north-up field compass; not a route; physical acceptance pending",
+  "entrypoint": "nav/",
+  "files": [
+    {
+      "path": "nav/index.html",
+      "git_blob": "6b3c278686120cccfdac5bee25a7e0af2adec713",
+      "sha256": "a7583c6e579a8332841d6159d21f919cae08e925bfc540a7f8f2763719adeee7"
+    },
+    {
+      "path": "nav/app.mjs",
+      "git_blob": "9ae118926d62b1bc8741ae73235e79a9e29378d1",
+      "sha256": "6158ccc01c286ddbd08da58afcbeb44f1c76256fe42149979ccd21c0bdfd6612"
+    },
+    {
+      "path": "nav/compass.mjs",
+      "git_blob": "9813532f1df0ee0a6e99ab6952087d64814586ce",
+      "sha256": "a3ca2b0f47ea64e12f76f69c6f17083adeb3f0ae867333c764258009b22cc720"
+    },
+    {
+      "path": "nav/place.mjs",
+      "git_blob": "546272b50712ba2f2f3b73f0fe148aa8e2535f1c",
+      "sha256": "5674a1998359d4c8d9daf19e1155fbe8186bec1b43b09252fe4af63f9ce1b0ac"
+    },
+    {
+      "path": "vendor/grid-distance-maths/src/geodesy.mjs",
+      "git_blob": "5a0320ca6db05273fae14f786b20223b088bc60b",
+      "sha256": "69234c6996c547551237284f87f29d47f05e85916c463f91dc6928f34aaeede3"
+    },
+    {
+      "path": "vendor/grid-distance-maths/LICENSE",
+      "git_blob": "d645695673349e3947e8e5ae42332d0ac3164cd7",
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    {
+      "path": "vendor/grid-distance-maths/NOTICE",
+      "git_blob": "3d54041a6f9a814cea138d9b2a4b098995992644",
+      "sha256": "99db695f8e7c85bc062f35ccb4f7af96f9d9a299f49ac95e31abc6c84c006b62"
+    }
+  ]
+}
