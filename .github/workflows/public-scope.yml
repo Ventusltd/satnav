@@ -1,0 +1,68 @@
+name: SatNav public landing page
+on:
+  pull_request:
+    paths: ['scope/**', '.github/workflows/public-scope.yml']
+  push:
+    paths: ['scope/**', '.github/workflows/public-scope.yml']
+jobs:
+  scope:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: |
+          python -m pip install playwright
+          python -m playwright install --with-deps chromium webkit
+      - name: Test public scope, exact palette, mobile layout and feed failure
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from playwright.sync_api import sync_playwright
+          import json, threading, http.server
+          html=Path('scope/index.html').read_text()
+          assert '(concept only stage)' in html
+          for forbidden in ('Neural Link','Agent 22','Agent 23','Agent 24','Agent 28','swarm','CI/CD'):
+              assert forbidden.lower() not in html.lower(), forbidden
+          for value in ('--bg:#000','--panel:#0b0e14','--accent:#00ffff','--text:#fff','#ff3038'):
+              assert value in html, value
+          assert 'England, Scotland, Wales and Northern Ireland' in html
+          srv=http.server.ThreadingHTTPServer(('127.0.0.1',0),http.server.SimpleHTTPRequestHandler)
+          threading.Thread(target=srv.serve_forever,daemon=True).start()
+          url=f'http://127.0.0.1:{srv.server_port}/scope/'
+          fixture={'schema':'globalgrid2050.news.pipeline-headlines.v1','generated_at':'2026-11-24T03:01:20Z','status':'partial','items':[{'title':'Grid fixture','source':'Test publisher','link':'https://example.com/story','date':'2026-11-24T00:00:00Z'},{'title':'Unsafe fixture','source':'Test','link':'javascript:alert(1)'},{'title':'Duplicate fixture','source':'Test','link':'https://example.com/story'}]}
+          with sync_playwright() as p:
+              for name in ('chromium','webkit'):
+                  browser=getattr(p,name).launch()
+                  for width,height in [(1440,900),(390,844),(844,390),(320,568)]:
+                      page=browser.new_page(viewport={'width':width,'height':height},reduced_motion='reduce')
+                      errors=[]
+                      page.on('pageerror',lambda e:errors.append(str(e)))
+                      page.route('https://raw.githubusercontent.com/**',lambda r:r.fulfill(status=200,content_type='application/json',headers={'access-control-allow-origin':'*'},body=json.dumps(fixture)))
+                      page.goto(url)
+                      page.locator('.pn-ticker-title').first.wait_for()
+                      assert page.locator('h1').inner_text()=='SatNav'
+                      assert page.locator('.pn-ticker-cycle:not(.pn-ticker-copy) a').count()==1
+                      assert 'Test publisher' in page.locator('.pn-ticker-title').first.inner_text()
+                      assert 'partial collection' in page.locator('#newsStatus').inner_text()
+                      assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+                      assert page.locator('body').evaluate('(e)=>getComputedStyle(e).backgroundColor')=='rgb(0, 0, 0)'
+                      assert page.locator('h1').evaluate('(e)=>getComputedStyle(e).color')=='rgb(0, 255, 255)'
+                      page.locator('#pauseTicker').click()
+                      assert page.locator('#pauseTicker').get_attribute('aria-pressed')=='true'
+                      assert not errors,errors
+                      page.close()
+                  for mode in ('snapshot','offline'):
+                      page=browser.new_page(viewport={'width':390,'height':844})
+                      def reply(route):
+                          if mode=='snapshot' and 'snapshot.json' in route.request.url:
+                              route.fulfill(status=200,content_type='application/json',headers={'access-control-allow-origin':'*'},body=json.dumps(fixture))
+                          else: route.fulfill(status=503,headers={'access-control-allow-origin':'*'},body='unavailable')
+                      page.route('https://raw.githubusercontent.com/**',reply)
+                      page.goto(url)
+                      page.wait_for_function("(mode)=>document.getElementById('newsStatus').textContent.includes(mode)",arg='Saved snapshot' if mode=='snapshot' else 'Headline feed unavailable')
+                      page.close()
+                  browser.close()
+          print('PASS: Chromium and WebKit desktop, portrait, landscape, narrow viewport; palette, scope, headline sanitisation, pause, fallback and offline.')
+          PY
