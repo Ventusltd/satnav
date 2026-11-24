@@ -1,4 +1,7 @@
 import {distanceKm,initialBearingDeg} from '../vendor/grid-distance-maths/src/geodesy.mjs';
+// Source: immutable P1 compass policy (9698781539e549deaa6ecaa4a2b34610c1f9fd29, nav/compass.mjs).
+// These are provisional product guardrails, not measured handset accuracy or a survey/safety standard.
+// Boundary tests in nav/contracts.test.mjs preserve the 10 s / 30 m behavior until field review.
 export const MAX_AGE_MS=10000, MAX_ACCURACY_M=30;
 export function fixQuality(fix,now=Date.now()){
   if(!fix)return 'missing';
