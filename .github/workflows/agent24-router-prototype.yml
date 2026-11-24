@@ -6,29 +6,45 @@ on:
       - 'test/router-grid.test.mjs'
       - 'test/router-contract.test.mjs'
       - 'test/route-follower.test.mjs'
+      - 'test/route-benchmark.mjs'
+      - 'automation/router_audit.py'
       - '.github/workflows/agent24-router-prototype.yml'
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: router-audit-${{ github.ref }}
+  cancel-in-progress: false
 jobs:
   reference-tests:
     runs-on: ubuntu-latest
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node --check src/router/grid-search.mjs
-      - run: node test/router-grid.test.mjs
-
-      - run: node --check src/router/contract-adapter.mjs
-      - run: node test/router-contract.test.mjs
-
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - uses: actions/checkout@v4
         with:
           repository: Ventusltd/grid-distance-maths
           ref: 8e91b07d8312acca5bcaef43e839f06a3b1d642a
           path: .canonical-maths
           persist-credentials: false
-      - run: node --check src/router/route-follower.mjs
-      - run: node test/route-follower.test.mjs .canonical-maths/src/geodesy.mjs
+      - run: |
+          node --check src/router/grid-search.mjs
+          node --check src/router/contract-adapter.mjs
+          node --check src/router/route-follower.mjs
+          python -m py_compile automation/router_audit.py
+      - run: python automation/router_audit.py --maths .canonical-maths/src/geodesy.mjs --out router-audit.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: router-audit-${{ github.run_id }}-${{ github.run_attempt }}
+          path: router-audit.json
+          if-no-files-found: warn
+          retention-days: 14
