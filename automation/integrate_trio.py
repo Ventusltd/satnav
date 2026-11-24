@@ -68,7 +68,7 @@ def run(lock,head,out):
                 dest=root/safe_path(path);dest.parent.mkdir(parents=True,exist_ok=True);dest.write_bytes(data)
                 files.append({"path":path,"agent":owners[path],"blob":oid,"sha256":hashlib.sha256(data).hexdigest(),"bytes":len(data)})
             receipt["files"]=files
-            commands=[["node","--test","nav/contracts.test.mjs"],["node","vendor/grid-distance-maths/test/verify.mjs"],["node","prototypes/terrain/cost-grid-builder.test.mjs"],["node","test/router-grid.test.mjs"],["node","test/router-contract.test.mjs"],["node","test/route-follower.test.mjs"],["node","automation/trio-smoke.mjs"],["node","--check","nav/app.mjs"]]
+            commands=[["node","--test","nav/contracts.test.mjs"],["node","vendor/grid-distance-maths/test/verify.mjs"],["node","prototypes/terrain/cost-grid-builder.test.mjs"],["node","prototypes/terrain/asset-adapter.test.mjs"],["node","test/router-grid.test.mjs"],["node","test/router-contract.test.mjs"],["node","test/route-follower.test.mjs"],["node","automation/trio-smoke.mjs"],["node","--check","nav/app.mjs"]]
             for command in commands:
                 t=time.monotonic()
                 result=subprocess.run(command,cwd=root,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=90)
