@@ -56,7 +56,8 @@ try:
                 expect(page.locator("#results button").nth(1)).to_contain_text("West fixture")
                 page.locator("#results button").nth(1).click()
                 expect(page.locator("#pending")).to_contain_text("-2.1")
-                assert_target("Baseline", "-0.4")
+                expect(page.locator("#destination")).to_have_text("Baseline")
+                assert page.evaluate("new URL(location.href).searchParams.get('to')") == "51.6,-0.4"
                 manual("Manual A", "-3.2")
                 assert_target("Manual A", "-3.2")
                 expect(page.locator("#selection")).to_be_hidden()
