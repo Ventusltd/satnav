@@ -1,0 +1,74 @@
+#!/usr/bin/env python3
+"""Read-only composition of exact committed SatNav candidates. Never pushes or merges."""
+import argparse, hashlib, json, re, subprocess, tempfile, time
+from pathlib import Path, PurePosixPath
+
+SHA=re.compile(r"^[0-9a-f]{40}$")
+def git(*args):
+    return subprocess.check_output(["git",*args],timeout=60)
+def safe_path(s):
+    p=PurePosixPath(s)
+    if not s or p.is_absolute() or ".." in p.parts or "\\" in s or ":" in s or str(p)!=s or s=="." or any(x.lower()==".git" for x in p.parts):
+        raise ValueError("unsafe path: "+s)
+    return p
+def commit(s):
+    if not SHA.fullmatch(s) or git("rev-parse",s+"^{commit}").decode().strip()!=s: raise ValueError("bad commit: "+s)
+    return s
+def descendants(base,head):
+    if subprocess.run(["git","merge-base","--is-ancestor",base,head],timeout=60).returncode: raise ValueError("head not descended from baseline")
+def tree(head):
+    out={}
+    for item in git("ls-tree","-r","-z",head).split(b"\0"):
+        if not item: continue
+        meta,path=item.split(b"\t",1);mode,kind,oid=meta.decode().split()
+        s=path.decode("utf-8");safe_path(s)
+        if kind!="blob" or mode not in ("100644","100755"): raise ValueError("nonregular source: "+s)
+        out[s]=(mode,oid)
+    return out
+def assemble(lock,integrator):
+    if lock.get("schema_version")!=1: raise ValueError("bad lock")
+    base=commit(lock["baseline"]);integrator=commit(integrator);descendants(base,integrator)
+    original=tree(base);selected=tree(integrator);owners={p:22 for p in selected}
+    seen=set()
+    for lane in lock["lanes"]:
+        agent=lane["agent"]
+        if agent not in (23,24) or agent in seen:raise ValueError("bad lane")
+        seen.add(agent);head=commit(lane["head"]);descendants(base,head);current=tree(head)
+        changed={p for p in set(original)|set(current) if original.get(p)!=current.get(p)}
+        if changed!=set(lane["paths"]):raise ValueError(f"Agent {agent} path-set mismatch: {sorted(changed)}")
+        for p in sorted(changed):
+            safe_path(p)
+            if p not in current:raise ValueError("deletion forbidden: "+p)
+            if p in selected and selected[p]!=original.get(p):raise ValueError("ownership collision: "+p)
+            if p in original:raise ValueError("baseline modification requires explicit review: "+p)
+            selected[p]=current[p];owners[p]=agent
+    if seen!={23,24}:raise ValueError("missing lane")
+    return selected,owners
+def run(lock,head,out):
+    started=time.monotonic();receipt={"schema_version":1,"integrator":head,"lanes":lock["lanes"],"status":"FAIL","checks":[]}
+    try:
+        selected,owners=assemble(lock,head)
+        with tempfile.TemporaryDirectory(prefix="satnav-trio-") as tmp:
+            root=Path(tmp);files=[]
+            for path,(_,oid) in sorted(selected.items()):
+                data=git("cat-file","blob",oid)
+                if hashlib.sha1(f"blob {len(data)}\0".encode()+data).hexdigest()!=oid:raise ValueError("blob mismatch: "+path)
+                dest=root/safe_path(path);dest.parent.mkdir(parents=True,exist_ok=True);dest.write_bytes(data)
+                files.append({"path":path,"agent":owners[path],"blob":oid,"sha256":hashlib.sha256(data).hexdigest(),"bytes":len(data)})
+            receipt["files"]=files
+            commands=[["node","--test","nav/contracts.test.mjs"],["node","vendor/grid-distance-maths/test/verify.mjs"],["node","prototypes/terrain/cost-grid-builder.test.mjs"],["node","test/router-grid.test.mjs"],["node","test/router-contract.test.mjs"],["node","automation/trio-smoke.mjs"],["node","--check","nav/app.mjs"]]
+            for command in commands:
+                t=time.monotonic()
+                result=subprocess.run(command,cwd=root,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=90)
+                receipt["checks"].append({"command":command,"exit":result.returncode,"seconds":round(time.monotonic()-t,3),"tail":result.stdout[-4000:]})
+                if result.returncode:raise RuntimeError("test failed: "+" ".join(command))
+            receipt["status"]="PASS"
+    except Exception as e:receipt["error"]=str(e)
+    finally:
+        receipt["seconds"]=round(time.monotonic()-started,3);out.parent.mkdir(parents=True,exist_ok=True);out.write_text(json.dumps(receipt,indent=2)+"\n",encoding="utf-8")
+        print(json.dumps({k:v for k,v in receipt.items() if k!="files"},indent=2))
+    return 0 if receipt["status"]=="PASS" else 1
+def main():
+    p=argparse.ArgumentParser();p.add_argument("--lock",type=Path,default=Path("automation/trio-lock.json"));p.add_argument("--integrator",required=True);p.add_argument("--out",type=Path,default=Path("trio-receipt.json"));a=p.parse_args()
+    return run(json.loads(a.lock.read_text(encoding="utf-8")),a.integrator,a.out)
+if __name__=="__main__":raise SystemExit(main())
