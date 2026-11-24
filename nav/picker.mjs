@@ -41,12 +41,14 @@ export function createPicker({lookup=fixtureLookup,onConfirm=()=>{}}={}){
     return snapshot();
   }
   function chooseResult(index){
-    if(status!=='results'||!Number.isInteger(index)||index<0||index>=results.length)throw Error('Result unavailable');
+    if(!['results','selected'].includes(status)||!Number.isInteger(index)||index<0||index>=results.length)throw Error('Result unavailable');
     pending={...results[index],coordinates:results[index].coordinates.slice()};
     status='selected';message='Review destination, then confirm.';return snapshot();
   }
   function chooseMapPoint(point){
-    epoch++;results=[];pending=normaliseChoice(point);status='selected';message='Review map point, then confirm.';return snapshot();
+    epoch++;results=[];pending=null;
+    try{pending=normaliseChoice(point);}catch(error){status='invalid';message=error.message;return snapshot();}
+    status='selected';message='Review map point, then confirm.';return snapshot();
   }
   function confirm(){
     if(!pending)throw Error('Choose a destination first');
