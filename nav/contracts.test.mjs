@@ -1,0 +1,10 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {parseDestination,buildDestination} from './place.mjs';
+import {guide} from './compass.mjs';
+test('coordinate order',()=>{assert.deepEqual(parseDestination('?latitude=51.5&longitude=-0.4').coordinates,[-0.4,51.5]);assert.deepEqual(parseDestination('?to=51.5,-0.4').coordinates,[-0.4,51.5]);});
+test('opaque identity and unverified access',()=>{const x={coordinates:[-0.4,51.5],mode:'foot_survey',name:'A & B',asset:{source:'fixture',id:'001'}};assert.deepEqual(parseDestination(buildDestination(x)),{...x,accessStatus:'unverified'});});
+test('invalid inputs',()=>{for(const s of ['?to=91,0','?to=1,181','?to=,1','?latitude=2','?to=1,2&latitude=1','?to=1,2&to=3,4','?to=1,2&mode=unknown','?to=1,2&id=foo','?to=Infinity,0'])assert.throws(()=>parseDestination(s));});
+test('zero and no destination',()=>{assert.deepEqual(parseDestination('?to=0,0').coordinates,[0,0]);assert.equal(parseDestination(''),null);});
+test('straight line east and freshness',()=>{const f={longitude:0,latitude:0,accuracyM:5,timestampMs:1000};const x=guide(f,{coordinates:[0.01,0]},1000);assert.equal(x.kind,'straight_line');assert.ok(Math.abs(x.bearingDeg-90)<1e-9);assert.ok(x.distanceM>1100&&x.distanceM<1120);assert.equal(guide(f,{coordinates:[0.01,0]},17000),null);});
+test('accuracy is not arrival or access',()=>{const x=guide({longitude:0,latitude:0,accuracyM:20,timestampMs:1000},{coordinates:[0,0]},1000);assert.equal(x.bearingDeg,null);assert.equal(x.withinAccuracy,true);assert.equal(x.accessStatus,'unverified');});
