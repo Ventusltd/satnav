@@ -4,6 +4,7 @@ on:
     paths:
       - 'src/router/**'
       - 'test/router-grid.test.mjs'
+      - 'test/router-contract.test.mjs'
       - '.github/workflows/agent24-router-prototype.yml'
   workflow_dispatch:
 permissions:
@@ -18,3 +19,6 @@ jobs:
           node-version: '22'
       - run: node --check src/router/grid-search.mjs
       - run: node test/router-grid.test.mjs
+
+      - run: node --check src/router/contract-adapter.mjs
+      - run: node test/router-contract.test.mjs
