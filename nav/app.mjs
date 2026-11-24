@@ -30,13 +30,13 @@ function showPicker(){
     const button=document.createElement('button');button.type='button';button.className='choice';
     const label=document.createElement('span'),sub=document.createElement('small');
     label.textContent=r.name;sub.textContent=r.locality||'Local fixture';button.append(label,sub);
-    button.onclick=()=>{picker.chooseResult(i);showPicker();};results.append(button);
+    button.onclick=()=>{picker.chooseResult(i);showPicker();el('confirm').focus();};results.append(button);
   });
   el('selection').hidden=!state.pending;
   el('pending').textContent=state.pending?`${state.pending.name}${state.pending.locality?' · '+state.pending.locality:''} · ${state.pending.coordinates[1]}, ${state.pending.coordinates[0]} · access unverified`:'';
 }
 el('placeSearch').addEventListener('submit',async e=>{
-  e.preventDefault();const current=picker.search(el('query').value);showPicker();await current;showPicker();
+  e.preventDefault();const current=picker.search(el('query').value);showPicker();const response=await current;if(!response.stale)showPicker();
 });
 el('cancel').onclick=()=>{picker.cancel();showPicker();};
 el('confirm').onclick=()=>{try{picker.confirm();el('targetError').textContent='';}catch(e){el('searchStatus').textContent=e.message;}showPicker();};
@@ -49,10 +49,11 @@ const pins=el('mapPins');mapFixtures.forEach((r,i)=>{
 });
 // Vicinity selection equivalent: a map click supplies event.lngLat → [lng, lat].
 el('map').addEventListener('click',event=>{
-  const rect=el('map').getBoundingClientRect();
-  if(!rect.width||!rect.height)return;
-  const x=Math.min(1,Math.max(0,(event.clientX-rect.left)/rect.width));
-  const y=Math.min(1,Math.max(0,(event.clientY-rect.top)/rect.height));
+  const svg=el('map'),matrix=svg.getScreenCTM();if(!matrix)return;
+  const point=svg.createSVGPoint();point.x=event.clientX;point.y=event.clientY;
+  const local=point.matrixTransform(matrix.inverse());
+  if(local.x<0||local.x>360||local.y<0||local.y>185)return;
+  const x=local.x/360,y=local.y/185;
   pickMap([Number((-8+10*x).toFixed(5)),Number((59-9*y).toFixed(5))]);
 });
 el('map').addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();pickMap([-0.4,51.5]);}});
