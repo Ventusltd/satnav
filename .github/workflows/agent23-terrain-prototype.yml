@@ -1,0 +1,20 @@
+name: Agent 23 terrain prototype
+on:
+  pull_request:
+    paths:
+      - 'prototypes/terrain/**'
+      - '.github/workflows/agent23-terrain-prototype.yml'
+  push:
+    branches:
+      - 'agent23/satnav-terrain-20261124'
+permissions:
+  contents: read
+jobs:
+  synthetic-terrain:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: node prototypes/terrain/cost-grid-builder.test.mjs
