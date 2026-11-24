@@ -158,6 +158,36 @@ class PolicyTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             compare({**lock,"lanes":lock["lanes"][:1]}, {"23":b,"24":a,"public":c})
 
+
+    def test_idle_main_exit_and_receipt(self):
+        from unittest.mock import patch
+        from types import SimpleNamespace
+        head = "a"*40
+        heads = {k: head for k in BRANCHES}
+        lock = {"schema_version":1,"lanes":[{"agent":23,"head":head},
+                {"agent":24,"head":head}],"published_baseline":head}
+        frozen = dt.datetime(2026,11,24,12,0,tzinfo=dt.timezone.utc)
+        for status, conclusion, expected, code in [
+            ("completed","success","REUSED_PASS",0),
+            ("in_progress",None,"WAITING",0),
+            ("completed","failure","FAIL",1),
+        ]:
+            with self.subTest(status=status, conclusion=conclusion):
+                run = {"id":1,"head_sha":head,"created_at":"2026-11-24",
+                       "status":status,"conclusion":conclusion}
+                with tempfile.TemporaryDirectory() as tmp, \
+                     patch.dict(os.environ, {"GITHUB_STEP_SUMMARY":""}), \
+                     patch(__name__+".dt", SimpleNamespace(datetime=SimpleNamespace(now=lambda _: frozen),timezone=dt.timezone)), \
+                     patch(__name__+".observed_heads",return_value=heads), \
+                     patch(__name__+".read_lock",return_value=lock), \
+                     patch(__name__+".get_runs",return_value=[run]), \
+                     patch(__name__+".execute_candidate") as compose:
+                    self.assertEqual(main(out=Path(tmp)),code)
+                    receipt=json.loads((Path(tmp)/"coordinator.json").read_text())
+                    self.assertEqual(receipt["status"],expected)
+                    compose.assert_not_called()
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--force", action="store_true")
