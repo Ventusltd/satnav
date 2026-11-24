@@ -36,3 +36,14 @@ test('D06 unverified map point has no implicit source identity or route promotio
 test('D07 invalid, partial and duplicate selector handoff parameters reject',()=>{
   for(const s of ['?latitude=51.5&longitude=','?latitude=51.5&longitude=%E2%88%920.4','?latitude=51.5&longitude=-0.4&longitude=0.4','?latitude=51.5&longitude=-0.4&source=map','?latitude=91&longitude=-0.4','?latitude=51.5&longitude=NaN']) assert.throws(()=>parseDestination(s));
 });
+
+import {createPicker} from './picker.mjs';
+test('picker allows reselection before confirmation',async()=>{
+  const p=createPicker();await p.search('Testbury');p.chooseResult(1);p.chooseResult(0);
+  assert.deepEqual(p.confirm().coordinates,[-0.4,51.5]);
+});
+test('invalid replacement clears pending choice and cannot confirm stale target',async()=>{
+  const p=createPicker();await p.search('Testbury');p.chooseResult(1);
+  assert.equal(p.chooseMapPoint({at:[181,51]}).status,'invalid');
+  assert.equal(p.snapshot().pending,null);assert.throws(()=>p.confirm());
+});
