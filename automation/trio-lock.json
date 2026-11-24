@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "baseline": "6113a9b5ce53f4ebcfe76be644a6e0ce5516b70c",
+  "lanes": [
+    {
+      "agent": 23,
+      "head": "eb5384bddde11e0139ec0588f01f4039c9531653",
+      "branch": "agent23/satnav-terrain-20261124",
+      "paths": [
+        "prototypes/terrain/README.md",
+        "prototypes/terrain/cost-grid-builder.mjs",
+        "prototypes/terrain/cost-grid-builder.test.mjs",
+        ".github/workflows/agent23-terrain-prototype.yml"
+      ]
+    },
+    {
+      "agent": 24,
+      "head": "807b6e36f90293d21037e7b71ab5fbf67360229c",
+      "branch": "agent24/satnav-hybrid-router-20261124",
+      "paths": [
+        "src/router/contract-adapter.mjs",
+        "src/router/grid-search.mjs",
+        "test/router-contract.test.mjs",
+        "test/router-grid.test.mjs",
+        ".github/workflows/agent24-router-prototype.yml"
+      ]
+    }
+  ]
+}
