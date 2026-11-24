@@ -1,0 +1,57 @@
+name: SatNav scheduled integration coordinator
+on:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+  push:
+    branches: ['agent22/satnav-contracts-20261124']
+    paths:
+      - 'automation/scheduled_ci.py'
+      - '.github/workflows/satnav-scheduled-ci.yml'
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: satnav-scheduled-coordinator
+  cancel-in-progress: false
+jobs:
+  coordinator:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Fetch exact candidate refs (read only)
+        run: |
+          git fetch --no-tags origin \
+            '+refs/heads/main:refs/remotes/origin/main' \
+            '+refs/heads/agent22/satnav-contracts-20261124:refs/remotes/origin/agent22/satnav-contracts-20261124' \
+            '+refs/heads/agent23/satnav-terrain-20261124:refs/remotes/origin/agent23/satnav-terrain-20261124' \
+            '+refs/heads/agent24/satnav-hybrid-router-20261124:refs/remotes/origin/agent24/satnav-hybrid-router-20261124'
+      - name: Test coordinator policy
+        run: python automation/scheduled_ci.py --self-test
+      - name: Check exact reviewed pins and run bounded regression
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" = schedule ]; then
+            python automation/scheduled_ci.py
+          else
+            python automation/scheduled_ci.py --force
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: scheduled-ci-receipts
+          path: ci-receipts/
+          if-no-files-found: warn
+          retention-days: 14
