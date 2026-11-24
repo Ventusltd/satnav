@@ -25,5 +25,9 @@
         ".github/workflows/agent24-router-prototype.yml"
       ]
     }
+  ],
+  "published_baseline": "50828bc39e0eb329da56b171eb40bcdd6f7997ce",
+  "published_paths": [
+    "scope/index.html"
   ]
 }
