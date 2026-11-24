@@ -1,0 +1,84 @@
+name: SatNav public served-byte verification
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['scope/**', '.github/workflows/public-scope-served.yml']
+permissions:
+  contents: read
+  statuses: write
+jobs:
+  public:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Mark public verification pending
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" -f state=pending -f context=satnav/public-scope -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" -f description="Checking public scope and pinned homepage bytes"
+      - name: Verify scope page and full homepage bundle against current owner pin
+        run: |
+          python - <<'PY'
+          import hashlib,json,time
+          from pathlib import Path
+          from urllib.request import Request,urlopen
+          from html.parser import HTMLParser
+          def get(url):
+              with urlopen(Request(url,headers={'Cache-Control':'no-cache','Accept-Encoding':'identity','User-Agent':'GlobalGrid2050-public-verifier'}),timeout=20) as r:
+                  assert r.status==200
+                  return r.read(1_100_000)
+          def sha(data):return hashlib.sha256(data).hexdigest()
+          pin=json.loads(get('https://raw.githubusercontent.com/Ventusltd/globalgrid2050/main/catalogue/homepage-owner.json'))
+          assert pin['repository']=='Ventusltd/globalgrid2050-homepage'
+          assert len(pin['commit'])==40 and len(pin['files'])==7
+          owner='https://raw.githubusercontent.com/'+pin['repository']+'/'+pin['commit']+'/'
+          files={}
+          for name,digest in pin['files'].items():
+              data=get(owner+name)
+              assert sha(data)==digest,name
+              files[name]=data
+          source=files.pop('index.html').decode('utf-8-sig')
+          assert source.count('id="satnav-concept"')==1
+          assert source.count('https://ventusltd.github.io/satnav/scope/')==1
+          assert '(concept only stage)' in source
+          class Links(HTMLParser):
+              def __init__(self):super().__init__();self.links=[]
+              def handle_starttag(self,tag,attrs):
+                  if tag=='a':self.links.extend(v for k,v in attrs if k=='href')
+          before=Links()
+          before.feed(get('https://raw.githubusercontent.com/Ventusltd/globalgrid2050-homepage/63c5e2bfcb56695c0269d4172611e93c062d8ccd/index.html').decode())
+          after=Links();after.feed(source)
+          assert set(before.links)<=set(after.links),'Existing homepage links lost'
+          for name in ('versioned-homepage.css','versioned-homepage.js'):
+              old='./assets/'+name
+              assert source.count(old)==1
+              source=source.replace(old,'./homepage-shell/assets/'+name)
+          old='href="data/homepage.json"'
+          assert source.count(old)==1
+          source=source.replace(old,'href="./homepage-shell/data/homepage.json"')
+          expected={'https://www.globalgrid2050.com/':(source.rstrip()+'\n').encode(),'https://ventusltd.github.io/satnav/scope/':Path('scope/index.html').read_bytes()}
+          expected.update({'https://globalgrid2050.com/homepage-shell/'+name:data for name,data in files.items()})
+          print('Owner pin',pin['commit'],'; retained links',len(set(before.links)),flush=True)
+          for attempt in range(12):
+              failures=[]
+              for url,data in expected.items():
+                  try:
+                      public=get(url+'?satnav_verify='+str(int(time.time())))
+                      if sha(public)!=sha(data):failures.append(url+' SHA256 mismatch')
+                  except Exception as e:failures.append(url+' '+str(e))
+              if not failures:
+                  print('PASS',len(expected),'exact public SHA256 comparisons; scope and complete homepage bundle',flush=True)
+                  break
+              print('Pending',attempt+1,failures,flush=True)
+              if attempt==11:raise SystemExit('Public verification failed')
+              time.sleep(12)
+          PY
+      - name: Record public verification result
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RESULT: ${{ job.status }}
+        run: |
+          if [ "$RESULT" = success ]; then state=success; else state=failure; fi
+          gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" -f state="$state" -f context=satnav/public-scope -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" -f description="Exact public scope and pinned homepage comparison"
