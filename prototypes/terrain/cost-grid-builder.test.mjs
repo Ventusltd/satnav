@@ -23,6 +23,21 @@ function runTests(decodeGgh1,buildFixtureGrid,syntheticTile){
   const p=buildFixtureGrid(a,{access,surface,hazard,relativeCost});
   for(const [i,c] of [[0,Infinity],[1,2],[2,Infinity],[3,Infinity],[4,Infinity],[5,Infinity],[6,2]])ok(p.cost[i]===c,"cost "+i);
   ok(p.access!==access&&p.hazard!==hazard,"source retained");reject(()=>buildFixtureGrid(a,{access:new Uint8Array(1)}),"length");reject(()=>buildFixtureGrid(a,{relativeCost:new Float32Array(size)}),"zero cost");reject(()=>buildFixtureGrid(a,{cellSizeM:0}),"resolution");
+  // 10m cells: south-up indexing, residual edge and independent masks.
+  const ten=decodeGgh1(syntheticTile({missing:[9*257+9,255*257+255]}));
+  const m=625,allow=new Uint8Array(m).fill(1),ground=new Uint8Array(m).fill(4),clear=new Uint8Array(m).fill(1),weight=new Float32Array(m).fill(3);
+  const q=buildFixtureGrid(ten,{cellSizeM:10,access:allow,surface:ground,hazard:clear,relativeCost:weight});
+  ok(q.rows===25&&q.cols===25&&q.provenance.coverageM===250&&q.provenance.excludedEdgeM===6,"10m residual coverage");
+  ok(Number.isNaN(q.elevation[0])&&q.cost[0]===Infinity,"10m nodata inside footprint");
+  ok(Math.abs(q.elevation[1]-0.85)<1e-6,"east cell mean");
+  ok(Math.abs(q.elevation[25]-1.85)<1e-6,"north cell mean");
+  ok(q.cost[624]===3,"excluded edge nodata does not poison covered cell");
+  reject(()=>buildFixtureGrid({...ten,rowOrder:"north-to-south"}),"wrong row order");
+  reject(()=>buildFixtureGrid({...ten,crs:"EPSG:4326"}),"wrong CRS");
+  reject(()=>buildFixtureGrid({...ten,originE:400000.5}),"fractional GGH1 origin");
+  reject(()=>buildFixtureGrid(ten,{cellSizeM:10,access:new Uint8Array(m).fill(3)}),"invalid access enum");
+  reject(()=>buildFixtureGrid(ten,{cellSizeM:10,hazard:new Uint8Array(m).fill(4)}),"invalid hazard enum");
+  reject(()=>buildFixtureGrid(ten,{cellSizeM:10,relativeCost:new Float32Array(m).fill(NaN)}),"nonfinite cost");
   return n;
 }
 console.log(`${runTests(decodeGgh1,buildFixtureGrid,syntheticTile)} synthetic checks passed`);

@@ -18,7 +18,7 @@ export function decodeGgh1(bytes) {
   return {originE:v.getInt32(12,true),originN:v.getInt32(16,true),spacingM:1,width:n,height:n,crs:"EPSG:27700",rowOrder:"south-to-north",elevation};
 }
 export function buildFixtureGrid(tile,{cellSizeM=5,access,surface,hazard,relativeCost}={}) {
-  if(![5,10].includes(cellSizeM)||tile.width!==257||tile.height!==257||tile.spacingM!==1||tile.crs!=="EPSG:27700"||!(tile.elevation instanceof Float64Array)||tile.elevation.length!==66049||!Number.isFinite(tile.originE)||!Number.isFinite(tile.originN))throw new Error("invalid tile or cell size");
+  if(![5,10].includes(cellSizeM)||tile.width!==257||tile.height!==257||tile.spacingM!==1||tile.crs!=="EPSG:27700"||tile.rowOrder!=="south-to-north"||!(tile.elevation instanceof Float64Array)||tile.elevation.length!==66049||!Number.isSafeInteger(tile.originE)||!Number.isSafeInteger(tile.originN))throw new Error("invalid tile or cell size");
   const rows=Math.floor(256/cellSizeM),cols=rows,n=rows*cols;
   function mask(input,max){if(input===undefined)return new Uint8Array(n);if(!(input instanceof Uint8Array)||input.length!==n||input.some(x=>x>max))throw new Error("invalid mask");return input.slice();}
   const a=mask(access,2),s=mask(surface,6),h=mask(hazard,3);
