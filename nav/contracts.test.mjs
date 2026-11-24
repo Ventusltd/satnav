@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {parseDestination,buildDestination} from './place.mjs';
-import {guide} from './compass.mjs';
+import {guide,fixQuality} from './compass.mjs';
 test('coordinate order',()=>{assert.deepEqual(parseDestination('?latitude=51.5&longitude=-0.4').coordinates,[-0.4,51.5]);assert.deepEqual(parseDestination('?to=51.5,-0.4').coordinates,[-0.4,51.5]);});
 test('opaque identity and unverified access',()=>{const x={coordinates:[-0.4,51.5],mode:'foot_survey',name:'A & B',asset:{source:'fixture',id:'001'}};assert.deepEqual(parseDestination(buildDestination(x)),{...x,accessStatus:'unverified'});});
 test('invalid inputs',()=>{for(const s of ['?to=91,0','?to=1,181','?to=,1','?latitude=2','?to=1,2&latitude=1','?to=1,2&to=3,4','?to=1,2&mode=unknown','?to=1,2&id=foo','?to=Infinity,0'])assert.throws(()=>parseDestination(s));});
@@ -46,4 +46,16 @@ test('invalid replacement clears pending choice and cannot confirm stale target'
   const p=createPicker();await p.search('Testbury');p.chooseResult(1);
   assert.equal(p.chooseMapPoint({at:[181,51]}).status,'invalid');
   assert.equal(p.snapshot().pending,null);assert.throws(()=>p.confirm());
+});
+
+test('boundary clock and accuracy contract retains exact limits',()=>{
+  const usable={longitude:-0.4,latitude:51.5,accuracyM:30,timestampMs:10000};
+  const destination={coordinates:[-0.4,51.51]};
+  assert.equal(fixQuality(usable,20000),'usable');
+  assert.ok(guide(usable,destination,20000));
+  assert.equal(fixQuality(usable,20001),'stale');
+  assert.equal(guide(usable,destination,20001),null);
+  assert.equal(guide({...usable,accuracyM:30.01},destination,10000),null);
+  assert.equal(guide(usable,destination,9999),null);
+  assert.equal(guide(usable,{coordinates:[-0.4,51.5]},10000).bearingDeg,null);
 });
