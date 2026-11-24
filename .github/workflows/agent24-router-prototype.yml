@@ -1,0 +1,20 @@
+name: Agent 24 router prototype
+on:
+  pull_request:
+    paths:
+      - 'src/router/**'
+      - 'test/router-grid.test.mjs'
+      - '.github/workflows/agent24-router-prototype.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  reference-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --check src/router/grid-search.mjs
+      - run: node test/router-grid.test.mjs
