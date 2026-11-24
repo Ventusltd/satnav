@@ -1,0 +1,90 @@
+name: SatNav P1 immutable preview verification
+on:
+  pull_request:
+    paths: ['preview/**', '.github/workflows/p1-preview.yml']
+  push:
+    branches: [main]
+    paths: ['preview/**', '.github/workflows/p1-preview.yml']
+permissions:
+  contents: read
+  statuses: write
+concurrency:
+  group: p1-preview-${{ github.event.pull_request.head.sha || github.sha }}
+  cancel-in-progress: false
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify exact seven-file release and preserved baseline
+        run: |
+          python - <<'PY'
+          import hashlib,json,subprocess
+          from pathlib import Path
+          root=Path('preview/9698781539e549deaa6ecaa4a2b34610c1f9fd29/')
+          m=json.loads((root/'manifest.json').read_text())
+          assert m['source_commit']=='9698781539e549deaa6ecaa4a2b34610c1f9fd29'
+          assert m['url']=='https://ventusltd.github.io/satnav/preview/9698781539e549deaa6ecaa4a2b34610c1f9fd29/nav/'
+          assert len(m['files'])==7
+          expected={f['path'] for f in m['files']}|{'manifest.json'}
+          assert {str(p.relative_to(root)) for p in root.rglob('*') if p.is_file()}==expected
+          for f in m['files']:
+              data=(root/f['path']).read_bytes()
+              assert hashlib.sha256(data).hexdigest()==f['sha256'],f['path']
+              blob=hashlib.sha1(('blob '+str(len(data))+'\0').encode()+data).hexdigest()
+              assert blob==f['git_blob'],f['path']
+          baseline='6db51ae36852802d1cfae3c32bf024984d503637'
+          changed=subprocess.check_output(['git','diff','--name-status',baseline,'HEAD'],text=True).splitlines()
+          assert len(changed)==9,changed
+          assert all(line.startswith('A\t'+str(root)+'/') or line=='A\t.github/workflows/p1-preview.yml' for line in changed),changed
+          assert subprocess.check_output(['git','rev-parse','HEAD:scope/index.html'],text=True).strip()=='080c45b472ea69dbb09c0a6c220364a393bceb0b'
+          print('PASS exact seven-file preview and additive-only baseline diff')
+          PY
+      - name: Mark preview served verification pending
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" -f state=pending -f context=satnav/p1-preview-served -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+      - name: Verify deployed seven files, manifest and existing scope
+        if: github.event_name == 'push'
+        run: |
+          python - <<'PY'
+          import hashlib,json,time
+          from pathlib import Path
+          from urllib.request import Request,urlopen
+          root=Path('preview/9698781539e549deaa6ecaa4a2b34610c1f9fd29/')
+          base='https://ventusltd.github.io/satnav/'
+          manifest=json.loads((root/'manifest.json').read_text())
+          checks={base+str(root/f['path']):(root/f['path']).read_bytes() for f in manifest['files']}
+          checks[base+str(root/'manifest.json')]=(root/'manifest.json').read_bytes()
+          checks[manifest['url']]=(root/'nav/index.html').read_bytes()
+          checks[base+'scope/']=Path('scope/index.html').read_bytes()
+          for attempt in range(20):
+              failures=[]
+              for url,expected in checks.items():
+                  try:
+                      with urlopen(Request(url+'?verify='+str(int(time.time())),headers={'Accept-Encoding':'identity','Cache-Control':'no-cache'}),timeout=12) as r:
+                          assert r.status==200
+                          assert hashlib.sha256(r.read()).digest()==hashlib.sha256(expected).digest(),'SHA256 mismatch'
+                          if url.endswith('.mjs'):assert 'javascript' in r.headers.get_content_type(),'module MIME '+r.headers.get_content_type()
+                  except Exception as e:failures.append((url,str(e)))
+              if not failures:
+                  print('PASS',len(checks),'public checks, seven runtime/licence files, manifest, entry and scope',flush=True)
+                  break
+              print('Pending',attempt+1,failures,flush=True)
+              if attempt==19:raise SystemExit('Preview not verified')
+              time.sleep(12)
+          PY
+      - name: Record preview verification
+        if: always() && github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RESULT: ${{ job.status }}
+        run: |
+          if [ "$RESULT" = success ]; then state=success; else state=failure; fi
+          gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" -f state="$state" -f context=satnav/p1-preview-served -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
