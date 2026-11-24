@@ -11,23 +11,33 @@
         "prototypes/terrain/cost-grid-builder.mjs",
         "prototypes/terrain/cost-grid-builder.test.mjs",
         ".github/workflows/agent23-terrain-prototype.yml"
-      ]
+      ],
+      "successor_hold": {
+        "head": "8420756f19343faada9e1c4054fe91247790dd6b",
+        "reason": "reciprocal asset-adapter review pending"
+      }
     },
     {
       "agent": 24,
-      "head": "807b6e36f90293d21037e7b71ab5fbf67360229c",
+      "head": "fb2a63fa0a70c18ff4d8c94df110cd6f58c26789",
       "branch": "agent24/satnav-hybrid-router-20261124",
       "paths": [
         "src/router/contract-adapter.mjs",
         "src/router/grid-search.mjs",
         "test/router-contract.test.mjs",
         "test/router-grid.test.mjs",
-        ".github/workflows/agent24-router-prototype.yml"
-      ]
+        ".github/workflows/agent24-router-prototype.yml",
+        "src/router/route-follower.mjs",
+        "test/route-follower.test.mjs"
+      ],
+      "review_scope": "synthetic composition only",
+      "review_evidence": "https://github.com/Ventusltd/neural-link-between-agents/issues/84#issuecomment-7133703158"
     }
   ],
-  "published_baseline": "50828bc39e0eb329da56b171eb40bcdd6f7997ce",
+  "published_baseline": "6db51ae36852802d1cfae3c32bf024984d503637",
   "published_paths": [
+    ".github/workflows/public-scope-served.yml",
+    ".github/workflows/public-scope.yml",
     "scope/index.html"
   ]
 }
