@@ -7,11 +7,16 @@ on:
   push:
     branches:
       - 'agent23/satnav-terrain-20261124'
+  workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: agent23-terrain-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   synthetic-terrain:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -21,25 +26,15 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Fetch exact upstream modules for test only
-        shell: bash
-        run: |
-          python - <<'PY'
-          import hashlib, pathlib, os, urllib.request
-          root = pathlib.Path(os.environ['RUNNER_TEMP']) / 'satnav-asset-fixtures'
-          root.mkdir()
-          sources = [
-            ('gridatlas', '1c9ed251ea31de67cc9d7e3b3d7908ea6aa39779', 'tools/vicinity/src/model.mjs', '4e6573e3798e4f6483ed546b29020da8992f194d', 'vicinity.mjs'),
-            ('gridatlas', '1c9ed251ea31de67cc9d7e3b3d7908ea6aa39779', 'atlas/modules/202609011950-geodesy.js', 'bfc364925b05a4295fc916fc6d55ec771b337548', 'atlas-geodesy.mjs'),
-            ('grid-distance-maths', '8e91b07d8312acca5bcaef43e839f06a3b1d642a', 'src/geodesy.mjs', '5a0320ca6db05273fae14f786b20223b088bc60b', 'canonical-geodesy.mjs'),
-          ]
-          for repo, rev, path, blob, target in sources:
-              with urllib.request.urlopen(f'https://raw.githubusercontent.com/Ventusltd/{repo}/{rev}/{path}', timeout=30) as response:
-                  data = response.read(1000001)
-              assert len(data) <= 1000000
-              actual = hashlib.sha1(f'blob {len(data)}\0'.encode()+data).hexdigest()
-              assert actual == blob, (repo, path, actual, blob)
-              (root / target).write_bytes(data)
-              print(repo, rev, path, actual, hashlib.sha256(data).hexdigest())
-          PY
-          SATNAV_UPSTREAM_FIXTURES="$RUNNER_TEMP/satnav-asset-fixtures" node prototypes/terrain/asset-adapter.test.mjs
+      - name: Verify pinned source and licence bytes
+        run: python prototypes/terrain/source-audit.py --fixtures "$RUNNER_TEMP/satnav-asset-fixtures" --out "$RUNNER_TEMP/source-audit.json"
+      - name: Test existing reviewed adapter
+        run: SATNAV_UPSTREAM_FIXTURES="$RUNNER_TEMP/satnav-asset-fixtures" node prototypes/terrain/asset-adapter.test.mjs
+      - name: Preserve source integrity receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent23-source-audit
+          path: ${{ runner.temp }}/source-audit.json
+          if-no-files-found: warn
+          retention-days: 14
