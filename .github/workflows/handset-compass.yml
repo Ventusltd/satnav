@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   browser:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
@@ -23,6 +23,24 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Test shared guidance quality boundaries
+        run: |
+          node --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          import {guide,fixQuality} from './nav/compass.mjs';
+          const fix={latitude:51.5,longitude:-0.4,accuracyM:30,timestampMs:10000};
+          const target={coordinates:[-0.4,51.51]};
+          assert.equal(fixQuality(fix,20000),'usable');
+          assert.ok(guide(fix,target,20000));
+          assert.equal(fixQuality(fix,20001),'stale');
+          assert.equal(guide(fix,target,20001),null);
+          assert.equal(guide({...fix,accuracyM:30.01},target,10000),null);
+          assert.equal(guide(fix,target,9999),null);
+          assert.equal(guide(fix,{coordinates:[-0.4,51.5]},10000).bearingDeg,null);
+          JS
       - run: |
           python -m pip install playwright==1.51.0
           python -m playwright install --with-deps chromium webkit
@@ -36,12 +54,14 @@ jobs:
           threading.Thread(target=srv.serve_forever,daemon=True).start()
           origin=f'http://127.0.0.1:{srv.server_port}'
           receipt={'sha':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),'cases':[],'status':'FAIL','physical_handset':False}
-          mock="""let ok,bad;window.watchCount=0;window.clearCount=0;
+          mock="""let ok,bad;const callbacks=[];window.watchCount=0;window.clearCount=0;
           Object.defineProperty(navigator,'geolocation',{value:{
-          watchPosition(s,e){ok=s;bad=e;window.watchCount++;return window.watchCount;},
+          watchPosition(s,e){ok=s;bad=e;callbacks.push(s);window.watchCount++;return window.watchCount;},
           clearWatch(){window.clearCount++;}
           }});
           window.emitFix=(accuracy=5,age=0,heading=null,speed=null)=>ok({coords:{latitude:51.5,longitude:-0.4,accuracy,heading,speed},timestamp:Date.now()-age});
+          window.emitOldFix=()=>callbacks[0]({coords:{latitude:51.5,longitude:-0.4,accuracy:5},timestamp:Date.now()});
+          window.emitNear=()=>ok({coords:{latitude:51.51,longitude:-0.4,accuracy:5},timestamp:Date.now()});
           window.emitError=(code)=>bad({code});"""
           try:
               with sync_playwright() as p:
@@ -79,6 +99,11 @@ jobs:
                           expect(page.locator('#bearing')).to_have_text('—')
                           page.evaluate('emitFix(5,11000)')
                           expect(page.locator('#status')).to_have_text('Location stale')
+                          page.evaluate('emitFix(5,9500)')
+                          expect(page.locator('#status')).to_have_text('Location stale',timeout=3500)
+                          page.evaluate('emitNear()')
+                          expect(page.locator('#bearing')).to_have_text('—')
+                          expect(page.locator('#accuracy')).to_contain_text('target within uncertainty')
                           page.evaluate('emitFix()')
                           page.locator('#stop').click()
                           page.evaluate('emitFix()')
@@ -86,6 +111,10 @@ jobs:
                           expect(page.locator('#position')).to_have_text('Position unavailable')
                           assert page.evaluate('window.clearCount')==2
                           page.locator('#start').click()
+                          page.evaluate('emitOldFix()')
+                          expect(page.locator('#status')).to_have_text('Requesting location')
+                          page.evaluate('emitError(3)')
+                          expect(page.locator('#status')).to_have_text('Location request timed out')
                           page.evaluate('emitError(2)')
                           expect(page.locator('#status')).to_have_text('Location unavailable')
                           page.locator('#stop').click()
@@ -96,6 +125,20 @@ jobs:
                           assert not errors,errors
                           case['status']='PASS'
                           page.close()
+                      if engine=='chromium':
+                          native={'engine':engine,'case':'native geolocation API with emulated position','status':'FAIL'}
+                          receipt['cases'].append(native)
+                          ctx=browser.new_context(geolocation={'latitude':51.5,'longitude':-0.4,'accuracy':5},permissions=['geolocation'])
+                          page=ctx.new_page()
+                          page.goto(origin+'/nav/?to=51.51,-0.4')
+                          expect(page.locator('#status')).to_have_text('Location not requested')
+                          page.locator('#start').click()
+                          expect(page.locator('#status')).to_have_text('Location fix received',timeout=12000)
+                          expect(page.locator('#accuracy')).to_contain_text('±5 m')
+                          page.locator('#stop').click()
+                          expect(page.locator('#position')).to_have_text('Position unavailable')
+                          ctx.close()
+                          native['status']='PASS'
                       browser.close()
               receipt['status']='PASS'
           finally:
