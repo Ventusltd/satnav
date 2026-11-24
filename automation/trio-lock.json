@@ -4,18 +4,22 @@
   "lanes": [
     {
       "agent": 23,
-      "head": "eb5384bddde11e0139ec0588f01f4039c9531653",
+      "head": "8420756f19343faada9e1c4054fe91247790dd6b",
       "branch": "agent23/satnav-terrain-20261124",
       "paths": [
         "prototypes/terrain/README.md",
         "prototypes/terrain/cost-grid-builder.mjs",
         "prototypes/terrain/cost-grid-builder.test.mjs",
-        ".github/workflows/agent23-terrain-prototype.yml"
+        ".github/workflows/agent23-terrain-prototype.yml",
+        "prototypes/terrain/asset-adapter.mjs",
+        "prototypes/terrain/asset-adapter.test.mjs"
       ],
       "successor_hold": {
-        "head": "8420756f19343faada9e1c4054fe91247790dd6b",
-        "reason": "reciprocal asset-adapter review pending"
-      }
+        "head": "989e4656193e8b9a7dfec136df8ad2966c74ef16",
+        "reason": "source-audit automation awaiting reciprocal review and exact-head CI"
+      },
+      "review_scope": "synthetic composition only",
+      "review_evidence": "https://github.com/Ventusltd/neural-link-between-agents/issues/84#issuecomment-7134416613"
     },
     {
       "agent": 24,
