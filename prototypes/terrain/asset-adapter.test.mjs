@@ -1,0 +1,48 @@
+import assert from 'node:assert/strict';
+import {pathToFileURL} from 'node:url';
+import {buildAssetIndex} from './asset-adapter.mjs';
+const root=process.env.SATNAV_UPSTREAM_FIXTURES;
+assert.ok(root,'Pinned upstream source directory required');
+globalThis.window={};
+await import(pathToFileURL(root+'/atlas-geodesy.mjs'));
+const atlas=window.__GRIDATLAS_MODULES__.geodesy;
+const canonical=await import(pathToFileURL(root+'/canonical-geodesy.mjs'));
+const vicinity=await import(pathToFileURL(root+'/vicinity.mjs'));
+const geodesy={...atlas,distanceKm:canonical.distanceKm};
+const f=(id,at,voltage='33000')=>({type:'Feature',id,geometry:{type:'Point',coordinates:at},properties:{name:'Fixture',voltage}});
+const points=[[-0.1,51.5],[-3.2,55.9],[-3.2,51.5],[-5.9,54.6]];
+const names=['England','Scotland','Wales','Northern Ireland'];
+// Exact synthetic classification, deliberately not a jurisdiction polygon.
+const classifyUk=at=>names[points.findIndex(p=>p[0]===at[0]&&p[1]===at[1])] || null;
+const provenance={source:'synthetic-fixtures',revision:'a'.repeat(40),coverage:'synthetic',licence:'test-only',attribution:'synthetic'};
+const features=[...points.map((p,i)=>f(i,p)),f('same-point',points[0],'11000'),f(0,points[0]),f('conflict',points[0]),f('conflict',points[1]),f('outside',[-6.3,53.3]),f(null,points[0]),f('bad',[null,51.5]),f('rail',points[0],'750')];
+const index=buildAssetIndex({features,vicinity,geodesy,provenance,classifyUk});
+assert.equal(index.counts.input,12);
+assert.equal(index.counts.eligible,6);
+assert.equal(index.counts.duplicate,1);
+assert.equal(index.counts.conflict,1);
+assert.equal(index.counts.outsideOrUnknown,1);
+assert.equal(index.counts.unidentifiable,1);
+assert.equal(index.counts.unlocated,1);
+assert.equal(index.get('conflict'),null);
+assert.equal(index.get('0').identity.id,'0');
+assert.equal(index.get('same-point').kv[0],11);
+assert.equal(index.get('rail').kv[0],0.75);
+assert.equal(index.get('0').navigationPermitted,false);
+for(let i=0;i<4;i++){
+  const q=index.search({origin:{at:points[i]},radius:1,bands:['33']});
+  assert.equal(q.shown[0].nation,names[i]);
+  assert.equal(q.shown[0].km,0);
+  assert.equal(q.navigable,false);
+}
+const q=index.search({origin:{at:points[0]},radius:1,bands:['33','11','other'],limit:1});
+assert.equal(q.matching,3);assert.equal(q.shown.length,1);assert.equal(q.truncated,true);
+q.shown[0].at[0]=180;
+assert.deepEqual(index.get('0').at,points[0]);
+assert.throws(()=>index.search({origin:{at:[-6.3,53.3]},radius:1,bands:['33']}));
+assert.throws(()=>index.search({origin:{at:points[0]},radius:0,bands:['33']}));
+assert.throws(()=>index.search({origin:{at:points[0]},radius:1,bands:['99']}));
+assert.throws(()=>buildAssetIndex({features,vicinity,geodesy,provenance:{},classifyUk}));
+assert.throws(()=>buildAssetIndex({features,vicinity,geodesy,provenance}));
+assert.ok(Math.abs(atlas.distanceKm(...points[0],...points[1])-canonical.distanceKm(...points[0],...points[1]))<1e-9);
+console.log('PASS: pinned Vicinity + Atlas metadata + canonical distance adapter; synthetic four-nation fixtures only');
