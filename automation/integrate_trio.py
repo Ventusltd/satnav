@@ -29,6 +29,18 @@ def assemble(lock,integrator):
     if lock.get("schema_version")!=1: raise ValueError("bad lock")
     base=commit(lock["baseline"]);integrator=commit(integrator);descendants(base,integrator)
     original=tree(base);selected=tree(integrator);owners={p:22 for p in selected}
+    # Lane branches retain the original common baseline; compose the approved
+    # public scope independently, without rebasing another agent's branch.
+    published=commit(lock["published_baseline"]);descendants(base,published)
+    published_tree=tree(published)
+    delta={p for p in set(original)|set(published_tree) if original.get(p)!=published_tree.get(p)}
+    if delta!=set(lock["published_paths"]):raise ValueError("published baseline path-set mismatch")
+    for p in sorted(delta):
+        if p not in published_tree or p in original:raise ValueError("unexpected published baseline change: "+p)
+        if p in selected and selected[p]!=published_tree[p]:raise ValueError("published scope collision: "+p)
+        selected[p]=published_tree[p];owners[p]="published_scope"
+    for p,entry in original.items():
+        if selected.get(p)!=entry:raise ValueError("original baseline modified: "+p)
     seen=set()
     for lane in lock["lanes"]:
         agent=lane["agent"]
@@ -45,7 +57,7 @@ def assemble(lock,integrator):
     if seen!={23,24}:raise ValueError("missing lane")
     return selected,owners
 def run(lock,head,out):
-    started=time.monotonic();receipt={"schema_version":1,"integrator":head,"lanes":lock["lanes"],"status":"FAIL","checks":[]}
+    started=time.monotonic();receipt={"schema_version":1,"integrator":head,"published_baseline":lock["published_baseline"],"lanes":lock["lanes"],"status":"FAIL","checks":[]}
     try:
         selected,owners=assemble(lock,head)
         with tempfile.TemporaryDirectory(prefix="satnav-trio-") as tmp:
