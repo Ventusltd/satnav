@@ -38,8 +38,8 @@ function showPicker(){
 el('placeSearch').addEventListener('submit',async e=>{
   e.preventDefault();const current=picker.search(el('query').value);showPicker();const response=await current;if(!response.stale)showPicker();
 });
-el('cancel').onclick=()=>{picker.cancel();showPicker();};
-el('confirm').onclick=()=>{try{picker.confirm();el('targetError').textContent='';}catch(e){el('searchStatus').textContent=e.message;}showPicker();};
+el('cancel').onclick=()=>{picker.cancel();showPicker();el('query').focus();};
+el('confirm').onclick=()=>{try{picker.confirm();el('targetError').textContent='';showPicker();const heading=el('destination');heading.tabIndex=-1;heading.focus();}catch(e){showPicker();el('searchStatus').textContent=e.message;}};
 function pickMap(at,label='Chosen map point'){
   picker.chooseMapPoint({at,label,sublabel:'Schematic map selection'});showPicker();
 }
@@ -62,7 +62,7 @@ el('target').addEventListener('submit',e=>{
   e.preventDefault();
   try{
     const p=new URLSearchParams({latitude:el('latitude').value,longitude:el('longitude').value,name:el('name').value});
-    const parsed=parseDestination(p.toString());setFromChoice(parsed);el('targetError').textContent='';
+    const parsed=parseDestination(p.toString());setFromChoice(parsed);picker.cancel();showPicker();el('searchStatus').textContent='Manual destination selected.';el('targetError').textContent='';
   }catch(err){el('targetError').textContent=err.message;}
 });
 async function acquire(){
