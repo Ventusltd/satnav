@@ -1,0 +1,40 @@
+name: Agent 23 terrain prototype
+on:
+  pull_request:
+    paths:
+      - 'prototypes/terrain/**'
+      - '.github/workflows/agent23-terrain-prototype.yml'
+  push:
+    branches:
+      - 'agent23/satnav-terrain-20261124'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: agent23-terrain-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  synthetic-terrain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: node prototypes/terrain/cost-grid-builder.test.mjs
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify pinned source and licence bytes
+        run: python prototypes/terrain/source-audit.py --fixtures "$RUNNER_TEMP/satnav-asset-fixtures" --out "$RUNNER_TEMP/source-audit.json"
+      - name: Test existing reviewed adapter
+        run: SATNAV_UPSTREAM_FIXTURES="$RUNNER_TEMP/satnav-asset-fixtures" node prototypes/terrain/asset-adapter.test.mjs
+      - name: Preserve source integrity receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent23-source-audit
+          path: ${{ runner.temp }}/source-audit.json
+          if-no-files-found: warn
+          retention-days: 14
