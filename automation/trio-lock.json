@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "baseline": "6113a9b5ce53f4ebcfe76be644a6e0ce5516b70c",
+  "lanes": [
+    {
+      "agent": 23,
+      "head": "8420756f19343faada9e1c4054fe91247790dd6b",
+      "branch": "agent23/satnav-terrain-20261124",
+      "paths": [
+        "prototypes/terrain/README.md",
+        "prototypes/terrain/cost-grid-builder.mjs",
+        "prototypes/terrain/cost-grid-builder.test.mjs",
+        ".github/workflows/agent23-terrain-prototype.yml",
+        "prototypes/terrain/asset-adapter.mjs",
+        "prototypes/terrain/asset-adapter.test.mjs"
+      ],
+      "successor_hold": {
+        "head": "989e4656193e8b9a7dfec136df8ad2966c74ef16",
+        "reason": "source-audit automation awaiting reciprocal review and exact-head CI"
+      },
+      "review_scope": "synthetic composition only",
+      "review_evidence": "https://github.com/Ventusltd/neural-link-between-agents/issues/84#issuecomment-7134416613"
+    },
+    {
+      "agent": 24,
+      "head": "fb2a63fa0a70c18ff4d8c94df110cd6f58c26789",
+      "branch": "agent24/satnav-hybrid-router-20261124",
+      "paths": [
+        "src/router/contract-adapter.mjs",
+        "src/router/grid-search.mjs",
+        "test/router-contract.test.mjs",
+        "test/router-grid.test.mjs",
+        ".github/workflows/agent24-router-prototype.yml",
+        "src/router/route-follower.mjs",
+        "test/route-follower.test.mjs"
+      ],
+      "review_scope": "synthetic composition only",
+      "review_evidence": "https://github.com/Ventusltd/neural-link-between-agents/issues/84#issuecomment-7133703158"
+    }
+  ],
+  "published_baseline": "6db51ae36852802d1cfae3c32bf024984d503637",
+  "published_paths": [
+    ".github/workflows/public-scope-served.yml",
+    ".github/workflows/public-scope.yml",
+    "scope/index.html"
+  ]
+}

@@ -1,0 +1,45 @@
+name: Pinned trio integration
+on:
+  push:
+    branches: ['agent22/satnav-contracts-20261124']
+  pull_request:
+    paths:
+      - 'automation/**'
+      - 'nav/**'
+      - 'vendor/**'
+      - '.github/workflows/trio-integration.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: satnav-trio-${{ github.event.pull_request.head.sha || github.sha }}
+  cancel-in-progress: false
+jobs:
+  compose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Fetch candidate objects without switching branches
+        run: git fetch --no-tags origin refs/heads/agent23/satnav-terrain-20261124 refs/heads/agent24/satnav-hybrid-router-20261124
+      - name: Compose exact pinned revisions and run offline gates
+        run: |
+          python -m py_compile automation/integrate_trio.py
+          python automation/integrate_trio.py --integrator "$(git rev-parse HEAD)" --out trio-receipt.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: trio-receipt
+          path: trio-receipt.json
+          if-no-files-found: warn
+          retention-days: 14

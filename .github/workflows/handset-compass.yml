@@ -1,0 +1,141 @@
+name: SatNav handset compass browser tests
+on:
+  push:
+    branches: ['agent22/satnav-contracts-20261124']
+    paths: ['nav/**', 'vendor/**', '.github/workflows/handset-compass.yml']
+  pull_request:
+    paths: ['nav/**', 'vendor/**', '.github/workflows/handset-compass.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: satnav-handset-${{ github.event.pull_request.head.sha || github.sha }}
+  cancel-in-progress: false
+jobs:
+  browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Test shared guidance quality boundaries (Node contract)
+        run: node --test nav/contracts.test.mjs
+      - run: |
+          python -m pip install playwright==1.51.0
+          python -m playwright install --with-deps chromium webkit
+      - name: Exercise compass with synthetic browser location events
+        run: |
+          python - <<'PY'
+          import json, threading, http.server, subprocess
+          from pathlib import Path
+          from playwright.sync_api import sync_playwright, expect
+          srv=http.server.ThreadingHTTPServer(('127.0.0.1',0),http.server.SimpleHTTPRequestHandler)
+          threading.Thread(target=srv.serve_forever,daemon=True).start()
+          origin=f'http://127.0.0.1:{srv.server_port}'
+          receipt={'sha':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),'cases':[],'status':'FAIL','physical_handset':False}
+          mock="""let ok,bad;const callbacks=[];window.watchCount=0;window.clearCount=0;
+          Object.defineProperty(navigator,'geolocation',{value:{
+          watchPosition(s,e){ok=s;bad=e;callbacks.push(s);window.watchCount++;return window.watchCount;},
+          clearWatch(){window.clearCount++;}
+          }});
+          window.emitFix=(accuracy=5,age=0,heading=null,speed=null)=>ok({coords:{latitude:51.5,longitude:-0.4,accuracy,heading,speed},timestamp:Date.now()-age});
+          window.emitOldFix=()=>callbacks[0]({coords:{latitude:51.5,longitude:-0.4,accuracy:5},timestamp:Date.now()});
+          window.emitNear=()=>ok({coords:{latitude:51.51,longitude:-0.4,accuracy:5},timestamp:Date.now()});
+          window.emitError=(code)=>bad({code});"""
+          try:
+              with sync_playwright() as p:
+                  for engine in ('chromium','webkit'):
+                      browser=getattr(p,engine).launch()
+                      for width,height in [(390,844),(844,390),(320,568)]:
+                          case={'engine':engine,'viewport':[width,height],'status':'FAIL'}
+                          receipt['cases'].append(case)
+                          page=browser.new_page(viewport={'width':width,'height':height})
+                          errors=[];external=[]
+                          page.on('pageerror',lambda e:errors.append(str(e)))
+                          page.route('**/*',lambda r:r.continue_() if r.request.url.startswith(origin+'/') else (external.append(r.request.url),r.abort()))
+                          page.add_init_script(mock)
+                          page.goto(origin+'/nav/?to=51.51,-0.4&name=Synthetic')
+                          expect(page.locator('#destination')).to_have_text('Synthetic')
+                          assert page.evaluate('window.watchCount')==0
+                          assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+                          assert page.locator('body').evaluate('(e)=>getComputedStyle(e).backgroundColor')=='rgb(0, 0, 0)'
+                          assert page.locator('h1').evaluate('(e)=>getComputedStyle(e).color')=='rgb(0, 255, 255)'
+                          page.locator('#start').click()
+                          page.evaluate('emitError(1)')
+                          expect(page.locator('#status')).to_have_text('Location permission denied')
+                          expect(page.locator('#start')).to_be_enabled()
+                          page.locator('#start').click()
+                          page.evaluate('emitFix()')
+                          expect(page.locator('#status')).to_have_text('Location fix received')
+                          expect(page.locator('#bearing')).to_have_text('0°')
+                          expect(page.locator('#position')).to_contain_text('51.50000')
+                          expect(page.locator('#accuracy')).to_contain_text('±5 m')
+                          expect(page.locator('#course')).to_contain_text('course unavailable')
+                          page.evaluate('emitFix(5,0,90,2)')
+                          expect(page.locator('#course')).to_contain_text('90°')
+                          page.evaluate('emitFix(50)')
+                          expect(page.locator('#status')).to_have_text('Poor location accuracy')
+                          expect(page.locator('#bearing')).to_have_text('—')
+                          page.evaluate('emitFix(5,11000)')
+                          expect(page.locator('#status')).to_have_text('Location stale')
+                          page.evaluate('emitFix(5,9500)')
+                          expect(page.locator('#status')).to_have_text('Location stale',timeout=3500)
+                          page.evaluate('emitNear()')
+                          expect(page.locator('#bearing')).to_have_text('—')
+                          expect(page.locator('#accuracy')).to_contain_text('target within uncertainty')
+                          page.evaluate('emitFix()')
+                          page.locator('#stop').click()
+                          page.evaluate('emitFix()')
+                          expect(page.locator('#status')).to_have_text('Location stopped')
+                          expect(page.locator('#position')).to_have_text('Position unavailable')
+                          assert page.evaluate('window.clearCount')==2
+                          page.locator('#start').click()
+                          page.evaluate('emitOldFix()')
+                          expect(page.locator('#status')).to_have_text('Requesting location')
+                          page.evaluate('emitError(3)')
+                          expect(page.locator('#status')).to_have_text('Location request timed out')
+                          page.evaluate('emitError(2)')
+                          expect(page.locator('#status')).to_have_text('Location unavailable')
+                          page.locator('#stop').click()
+                          page.goto(origin+'/nav/?to=91,0')
+                          expect(page.locator('#targetError')).not_to_be_empty()
+                          expect(page.locator('#destination')).to_have_text('No destination selected')
+                          assert not external,external
+                          assert not errors,errors
+                          case['status']='PASS'
+                          page.close()
+                      if engine=='chromium':
+                          native={'engine':engine,'case':'native geolocation API with emulated position','status':'FAIL'}
+                          receipt['cases'].append(native)
+                          ctx=browser.new_context(geolocation={'latitude':51.5,'longitude':-0.4,'accuracy':5},permissions=['geolocation'])
+                          page=ctx.new_page()
+                          page.goto(origin+'/nav/?to=51.51,-0.4')
+                          expect(page.locator('#status')).to_have_text('Location not requested')
+                          page.locator('#start').click()
+                          expect(page.locator('#status')).to_have_text('Location fix received',timeout=12000)
+                          expect(page.locator('#accuracy')).to_contain_text('±5 m')
+                          page.locator('#stop').click()
+                          expect(page.locator('#position')).to_have_text('Position unavailable')
+                          ctx.close()
+                          native['status']='PASS'
+                      browser.close()
+              receipt['status']='PASS'
+          finally:
+              Path('handset-browser-receipt.json').write_text(json.dumps(receipt,indent=2)+'\n')
+              srv.shutdown()
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: handset-browser-receipt
+          path: handset-browser-receipt.json
+          if-no-files-found: warn
+          retention-days: 14
