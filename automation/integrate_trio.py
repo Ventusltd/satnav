@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Read-only composition of exact committed SatNav candidates. Never pushes or merges."""
-import argparse, hashlib, json, re, subprocess, tempfile, time
+import argparse, hashlib, json, re, subprocess, tempfile, time, os, urllib.request
 from pathlib import Path, PurePosixPath
 
 SHA=re.compile(r"^[0-9a-f]{40}$")
@@ -56,6 +56,23 @@ def assemble(lock,integrator):
             selected[p]=current[p];owners[p]=agent
     if seen!={23,24}:raise ValueError("missing lane")
     return selected,owners
+def asset_fixtures(root):
+    root.mkdir()
+    sources=[
+        ("gridatlas","1c9ed251ea31de67cc9d7e3b3d7908ea6aa39779","tools/vicinity/src/model.mjs","4e6573e3798e4f6483ed546b29020da8992f194d","vicinity.mjs"),
+        ("gridatlas","1c9ed251ea31de67cc9d7e3b3d7908ea6aa39779","atlas/modules/202609011950-geodesy.js","bfc364925b05a4295fc916fc6d55ec771b337548","atlas-geodesy.mjs"),
+        ("grid-distance-maths","8e91b07d8312acca5bcaef43e839f06a3b1d642a","src/geodesy.mjs","5a0320ca6db05273fae14f786b20223b088bc60b","canonical-geodesy.mjs"),
+    ]
+    receipts=[]
+    for repo,rev,path,blob,name in sources:
+        with urllib.request.urlopen(f"https://raw.githubusercontent.com/Ventusltd/{repo}/{rev}/{path}",timeout=30) as response:
+            data=response.read(1000001)
+        if len(data)>1000000 or hashlib.sha1(f"blob {len(data)}\0".encode()+data).hexdigest()!=blob:
+            raise ValueError("upstream fixture integrity mismatch: "+name)
+        (root/name).write_bytes(data)
+        receipts.append({"repo":repo,"revision":rev,"path":path,"blob":blob,"sha256":hashlib.sha256(data).hexdigest(),"scope":"synthetic test only"})
+    return receipts
+
 def run(lock,head,out):
     started=time.monotonic();receipt={"schema_version":1,"integrator":head,"published_baseline":lock["published_baseline"],"lanes":lock["lanes"],"status":"FAIL","checks":[]}
     try:
@@ -68,10 +85,13 @@ def run(lock,head,out):
                 dest=root/safe_path(path);dest.parent.mkdir(parents=True,exist_ok=True);dest.write_bytes(data)
                 files.append({"path":path,"agent":owners[path],"blob":oid,"sha256":hashlib.sha256(data).hexdigest(),"bytes":len(data)})
             receipt["files"]=files
+            fixture_root=root/".asset-fixtures"
+            receipt["upstream_fixtures"]=asset_fixtures(fixture_root)
+            env={**os.environ,"SATNAV_UPSTREAM_FIXTURES":str(fixture_root)}
             commands=[["node","--test","nav/contracts.test.mjs"],["node","vendor/grid-distance-maths/test/verify.mjs"],["node","prototypes/terrain/cost-grid-builder.test.mjs"],["node","prototypes/terrain/asset-adapter.test.mjs"],["node","test/router-grid.test.mjs"],["node","test/router-contract.test.mjs"],["node","test/route-follower.test.mjs"],["node","automation/trio-smoke.mjs"],["node","--check","nav/app.mjs"]]
             for command in commands:
                 t=time.monotonic()
-                result=subprocess.run(command,cwd=root,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=90)
+                result=subprocess.run(command,cwd=root,env=env,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=90)
                 receipt["checks"].append({"command":command,"exit":result.returncode,"seconds":round(time.monotonic()-t,3),"tail":result.stdout[-4000:]})
                 if result.returncode:raise RuntimeError("test failed: "+" ".join(command))
             receipt["status"]="PASS"
