@@ -5,6 +5,7 @@ on:
       - 'src/router/**'
       - 'test/router-grid.test.mjs'
       - 'test/router-contract.test.mjs'
+      - 'test/route-follower.test.mjs'
       - '.github/workflows/agent24-router-prototype.yml'
   workflow_dispatch:
 permissions:
@@ -22,3 +23,12 @@ jobs:
 
       - run: node --check src/router/contract-adapter.mjs
       - run: node test/router-contract.test.mjs
+
+      - uses: actions/checkout@v4
+        with:
+          repository: Ventusltd/grid-distance-maths
+          ref: 8e91b07d8312acca5bcaef43e839f06a3b1d642a
+          path: .canonical-maths
+          persist-credentials: false
+      - run: node --check src/router/route-follower.mjs
+      - run: node test/route-follower.test.mjs .canonical-maths/src/geodesy.mjs
