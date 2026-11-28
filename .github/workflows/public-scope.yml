@@ -39,7 +39,12 @@ jobs:
           prior=subprocess.check_output(['git','show',baseline+':scope/index.html']).decode()
           assert 'Development preview — GPS prototype available' in html
           assert '(concept only stage)' not in html
-          assert html.split('<script type="module">')[1]==prior.split('<script type="module">')[1], 'Ticker script changed'
+          # Only the explicitly reviewed optional-date guard is proposed; all other ticker bytes remain pinned.
+          old_date="Number.isFinite(Date.parse(item.date))?item.date.slice(0,10):'Date unavailable'"
+          new_date="typeof item.date==='string'&&"+old_date
+          prior_script=prior.split('<script type="module">')[1]
+          assert prior_script.count(old_date)==1
+          assert html.split('<script type="module">')[1]==prior_script.replace(old_date,new_date,1), 'Unexpected ticker script delta'
           assert html.split('<style>')[1].startswith(prior.split('<style>')[1].split('</style>')[0]), 'Existing CSS changed'
           class Links(HTMLParser):
               def __init__(self): super().__init__(); self.links=[]
@@ -118,6 +123,30 @@ jobs:
                       assert page.locator('#pauseTicker').get_attribute('aria-pressed')=='false'
                       assert not errors,errors
                       page.close()
+                  # Full-page regression: malformed optional dates must not discard otherwise valid headlines.
+                  page=browser.new_page(viewport={'width':390,'height':844})
+                  errors=[]
+                  calls=[]
+                  page.on('pageerror',lambda e:errors.append(str(e)))
+                  items=[{'title':f'Headline {i}','source':'Fixture','link':f'https://example.com/{i}'} for i in range(6)]
+                  for i,value in [(0,'2026-11-28T00:00:00Z'),(2,'bad'),(3,0),(4,['2026-11-28']),(5,'2026-11-27')]:
+                      items[i]['date']=value
+                  mixed=dict(fixture,status='ok',items=items+[{'title':'Unsafe','source':'Fixture','link':'javascript:alert(1)'},dict(items[0],title='Duplicate')])
+                  saved=dict(fixture,items=[items[0],items[5]])
+                  def mixed_reply(route):
+                      calls.append(route.request.url)
+                      doc=saved if 'snapshot.json' in route.request.url else mixed
+                      route.fulfill(status=200,content_type='application/json',headers={'access-control-allow-origin':'*'},body=json.dumps(doc))
+                  page.route('https://raw.githubusercontent.com/**',mixed_reply)
+                  page.goto(url)
+                  page.wait_for_function("document.getElementById('newsStatus').textContent.startsWith('Shared feed')",timeout=10000)
+                  primary=page.locator('.pn-ticker-cycle:not(.pn-ticker-copy)')
+                  assert primary.locator('a').all_text_contents()==[f'Headline {i} — Fixture' for i in range(6)]
+                  assert primary.locator('.pn-ticker-date').all_text_contents()==['2026-11-28','Date unavailable','Date unavailable','Date unavailable','Date unavailable','2026-11-27']
+                  assert len(calls)==1 and 'snapshot.json' not in calls[0], calls
+                  assert not errors,errors
+                  page.close()
+                  print('PASS mixed optional-date feed:',name,flush=True)
                   for mode in ('snapshot','offline'):
                       page=browser.new_page(viewport={'width':390,'height':844})
                       def reply(route):
