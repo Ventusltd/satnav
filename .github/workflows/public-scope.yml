@@ -85,6 +85,11 @@ jobs:
                       page.goto(url)
                       page.locator('.pn-ticker-title').first.wait_for()
                       assert page.locator('h1').inner_text()=='SatNav'
+                      levels=page.locator('main h1,main h2,main h3,main h4,main h5,main h6').evaluate_all('(els)=>els.map(e=>Number(e.tagName.slice(1)))')
+                      assert levels[0]==1 and levels.count(1)==1 and all(b<=a+1 for a,b in zip(levels,levels[1:])), levels
+                      assert page.locator('#launch-options-heading').inner_text()=='Launch options'
+                      assert page.locator('.launch-grid').get_attribute('aria-labelledby')=='launch-options-heading'
+                      assert page.locator('.launch-grid').get_attribute('role')=='group'
                       assert page.locator('.launch-card').count()==3
                       launch=page.locator('#launch-gps')
                       assert launch.get_attribute('href')==gps
