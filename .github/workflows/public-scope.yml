@@ -89,6 +89,7 @@ jobs:
                       assert levels[0]==1 and levels.count(1)==1 and all(b<=a+1 for a,b in zip(levels,levels[1:])), levels
                       assert page.locator('#launch-options-heading').inner_text()=='Launch options'
                       assert page.locator('.launch-grid').get_attribute('aria-labelledby')=='launch-options-heading'
+                      assert page.locator('.launch-grid').get_attribute('role')=='group'
                       assert page.locator('.launch-card').count()==3
                       launch=page.locator('#launch-gps')
                       assert launch.get_attribute('href')==gps
